@@ -52,18 +52,16 @@ def gen_simulation_model_params(theta_resolution):
         for theta2_init in search_space:
             yield theta1_init, theta2_init
 
-def parallel(args):
-    theta1_init, theta2_init = args
-    y0 = np.array([theta1_init, 0, theta2_init, 0])
-
-    theta1, theta2, x1, y1, x2, y2 = solve(y0)
-    return theta1_init, theta2_init, theta1[-1], theta2[-1], x1[-1], y1[-1], x2[-1], y2[-1]
-
 def paralel_simulate_pendulum(theta_resolution, dt=DEFAULT_DT, tmax=DEFAULT_TMAX, L1=DEFAULT_L1, L2=DEFAULT_L2, m1=DEFAULT_M1, m2=DEFAULT_M2):
-    # with Pool() as pool:
-    pool = Pool()
-    r = pool.imap(parallel, gen_simulation_model_params(theta_resolution))
-    return pool, r      
+    y0 = []
+    for theta1_init, theta2_init in gen_simulation_model_params(theta_resolution):
+        y0.append(np.array([theta1_init, 0, theta2_init, 0]))
+
+    with Pool() as pool:
+        r = pool.imap(solve, y0)
+        for i, ri in enumerate(r):
+            theta1, theta2, x1, y1, x2, y2 = ri
+            yield y0[i][0], y0[i][2], theta1[-1], theta2[-1], x1[-1], y1[-1], x2[-1], y2[-1] #jel ima poente yield
     
 def store_results(filename, results):
     with open(filename, 'w') as f:
@@ -71,7 +69,7 @@ def store_results(filename, results):
 
         writer.writerow(['theta1_init', 'theta2_init', 'theta1', 'theta2'])
         for r in results:
-            writer.writerow(r[:4])
+          writer.writerow(r[:4])
 
 def main():
     parser = argparse.ArgumentParser()
@@ -103,13 +101,12 @@ def main():
     )
     args = parser.parse_args()
 
-    pool, results = paralel_simulate_pendulum(
+    results = paralel_simulate_pendulum(
         theta_resolution=args.resolution,
         dt=args.dt,
         tmax=args.tmax,
     )
     store_results(args.results_file, results)
-    pool.close()
 
 if __name__ == '__main__':
     main()

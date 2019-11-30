@@ -31,7 +31,7 @@ def deriv(y, t, L1, L2, m1, m2):
              m2*L2*z2**2*s*c) / L2 / (m1 + m2*s**2)
     return theta1dot, z1dot, theta2dot, z2dot
 
-def solve(y0, L1=DEFAULT_L1, L2=DEFAULT_L2, m1=DEFAULT_M1, m2=DEFAULT_M2, tmax=DEFAULT_TMAX, dt=DEFAULT_DT):
+def solve(L1, L2, m1, m2, tmax, dt, y0):
     t = np.arange(0, tmax+dt, dt)
 
     # Do the numerical integration of the equations of motion
@@ -46,22 +46,24 @@ def solve(y0, L1=DEFAULT_L1, L2=DEFAULT_L2, m1=DEFAULT_M1, m2=DEFAULT_M2, tmax=D
 
     return theta1, theta2, x1, y1, x2, y2
 
-def gen_simulation_model_params(theta_resolution):
+def gen_simulation_model_params(theta_resolution, dt, tmax, L1, L2, m1, m2):
     search_space = np.linspace(0, 2*np.pi, theta_resolution)
     for theta1_init in search_space:
         for theta2_init in search_space:
-            yield theta1_init, theta2_init
+            yield theta1_init, theta2_init, dt, tmax, L1, L2, m1, m2
+
+def parallel(args):
+    theta1_init, theta2_init, dt, tmax, L1, L2, m1, m2 = args
+    y0 = np.array([theta1_init, 0, theta2_init, 0])
+
+    theta1, theta2, x1, y1, x2, y2 = solve(L1, L2, m1, m2, tmax, dt, y0)
+    return theta1_init, theta2_init, theta1[-1], theta2[-1], x1[-1], y1[-1], x2[-1], y2[-1]
 
 def paralel_simulate_pendulum(theta_resolution, dt=DEFAULT_DT, tmax=DEFAULT_TMAX, L1=DEFAULT_L1, L2=DEFAULT_L2, m1=DEFAULT_M1, m2=DEFAULT_M2):
-    y0 = []
-    for theta1_init, theta2_init in gen_simulation_model_params(theta_resolution):
-        y0.append(np.array([theta1_init, 0, theta2_init, 0]))
-
-    with Pool() as pool:
-        r = pool.imap(solve, y0)
-        for i, ri in enumerate(r):
-            theta1, theta2, x1, y1, x2, y2 = ri
-            yield y0[i][0], y0[i][2], theta1[-1], theta2[-1], x1[-1], y1[-1], x2[-1], y2[-1] #jel ima poente yield
+    # with Pool() as pool:
+    pool = Pool()
+    r = pool.imap(parallel, gen_simulation_model_params(theta_resolution, dt, tmax, L1, L2, m1, m2), chunksize=theta_resolution)
+    return pool, r      
     
 def store_results(filename, results):
     with open(filename, 'w') as f:
@@ -69,7 +71,7 @@ def store_results(filename, results):
 
         writer.writerow(['theta1_init', 'theta2_init', 'theta1', 'theta2'])
         for r in results:
-          writer.writerow(r[:4])
+            writer.writerow(r[:4])
 
 def main():
     parser = argparse.ArgumentParser()
@@ -101,12 +103,13 @@ def main():
     )
     args = parser.parse_args()
 
-    results = paralel_simulate_pendulum(
+    pool, results = paralel_simulate_pendulum(
         theta_resolution=args.resolution,
         dt=args.dt,
         tmax=args.tmax,
     )
     store_results(args.results_file, results)
+    pool.terminate()
 
 if __name__ == '__main__':
     main()
